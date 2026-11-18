@@ -1,0 +1,2514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Color Escape</title>
+  <meta name="description" content="A fast-paced 2D HTML5 Canvas survival arcade game where runners evade an AI chaser through alternating grayscale and color-reveal phases." />
+  <meta property="og:title" content="Color Escape" />
+  <meta property="og:description" content="Survive the grayscale hunt, then sprint to the target color block before time runs out." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <style>
+    :root {
+      --bg-void: #0b0e14;
+      --bg-surface: #131822;
+      --bg-elevated: #1a2130;
+      --border-hairline: rgba(255, 255, 255, 0.09);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-p1: #22d3ee;
+      --accent-p2: #f472b6;
+      --accent-danger: #ef4444;
+      --accent-safe: #10b981;
+      --accent-warn: #facc15;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-void);
+      color: var(--text-primary);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    .app-shell {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      gap: 10px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.06), transparent 55%),
+        radial-gradient(circle at 50% 100%, rgba(239, 68, 68, 0.06), transparent 55%),
+        var(--bg-void);
+    }
+
+    /* Responsive Game Frame maintaining aspect ratio cleanly */
+    .game-frame {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: min(1000px, calc(100vw - 24px), calc((100vh - 136px) * 1.5625));
+      gap: 8px;
+    }
+
+    /* Top Perimeter HUD */
+    .hud-bar {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 16px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      min-height: 62px;
+    }
+
+    .hud-left {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .hud-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .hud-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .hud-value {
+      font-size: 16px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .hud-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      min-width: 240px;
+    }
+
+    .phase-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .phase-tag {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+    }
+
+    .phase-tag.phase-color {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+    }
+
+    .phase-tag.phase-end {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
+
+    .timer-track {
+      width: 100%;
+      height: 7px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .timer-fill {
+      height: 100%;
+      width: 100%;
+      background: #e2e8f0;
+      border-radius: 999px;
+      transform-origin: left center;
+      transition: background-color 0.2s ease;
+    }
+
+    .hud-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .target-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 12px 5px 7px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 8px;
+    }
+
+    .target-swatch {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 15px;
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      flex-shrink: 0;
+    }
+
+    .target-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .target-name {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      min-width: 68px;
+    }
+
+    .hud-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .icon-btn:hover {
+      background: #252e42;
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .icon-btn:active {
+      transform: scale(0.96);
+    }
+
+    .icon-btn:focus-visible,
+    .btn:focus-visible,
+    .seg-btn:focus-visible {
+      outline: 2px solid var(--accent-p1);
+      outline-offset: 2px;
+    }
+
+    /* Canvas Viewport Stage */
+    .stage-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1000 / 640;
+      background: #0e121a;
+      border-radius: 10px;
+      border: 1px solid var(--border-hairline);
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Bottom Stamina & Controls Strip */
+    .stamina-bar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 8px 16px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      min-height: 44px;
+    }
+
+    .stamina-group {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .stamina-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 190px;
+    }
+
+    .stamina-item.hidden {
+      display: none;
+    }
+
+    .player-tag {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .player-tag.p1 { color: var(--accent-p1); }
+    .player-tag.p2 { color: var(--accent-p2); }
+
+    .stamina-track {
+      flex: 1;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .stamina-fill {
+      height: 100%;
+      width: 100%;
+      border-radius: 999px;
+      transition: opacity 0.15s ease;
+    }
+
+    .stamina-fill.p1 { background: var(--accent-p1); }
+    .stamina-fill.p2 { background: var(--accent-p2); }
+
+    .stamina-pct {
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+      width: 36px;
+      text-align: right;
+    }
+
+    .hint-line {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    /* Overlay Screens inside stage */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(9, 12, 18, 0.84);
+      z-index: 10;
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 620px;
+      background: var(--bg-surface);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      padding: 28px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+    }
+
+    .modal-card.compact {
+      max-width: 440px;
+      text-align: center;
+      align-items: center;
+    }
+
+    .title-lockup {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--border-hairline);
+      padding-bottom: 16px;
+    }
+
+    .title-svg {
+      display: block;
+      height: 46px;
+      width: auto;
+    }
+
+    .subtitle-line {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .instructions-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .inst-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .inst-heading {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+    }
+
+    .inst-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding-top: 4px;
+    }
+
+    .control-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 10px 12px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 8px;
+    }
+
+    .control-keys {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .menu-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .seg-control {
+      display: inline-flex;
+      padding: 4px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 9px;
+      gap: 4px;
+    }
+
+    .seg-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .seg-btn.active {
+      background: var(--text-primary);
+      color: #0b0e14;
+    }
+
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 9px;
+      padding: 11px 22px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn-primary {
+      background: #22d3ee;
+      color: #082f49;
+    }
+
+    .btn-primary:hover {
+      background: #67e8f9;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background: #f87171;
+    }
+
+    .btn-secondary {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border-color: var(--border-hairline);
+    }
+
+    .btn-secondary:hover {
+      background: #252e42;
+    }
+
+    .modal-title {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .modal-title.gameover {
+      color: #f87171;
+    }
+
+    .summary-stats {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 14px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+    }
+
+    .summary-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .summary-stat .val {
+      font-size: 24px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .start-prompt {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: right;
+    }
+
+    @media (max-width: 760px) {
+      .hud-bar {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 8px 10px;
+      }
+      .hud-center {
+        grid-column: 1 / -1;
+        order: 3;
+        min-width: 0;
+      }
+      .controls-grid {
+        grid-template-columns: 1fr;
+      }
+      .hint-line {
+        display: none;
+      }
+      .modal-card {
+        padding: 18px;
+        gap: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="game-frame">
+      <!-- Top HUD -->
+      <header class="hud-bar">
+        <div class="hud-left">
+          <div class="hud-stat">
+            <span class="hud-label">Round</span>
+            <span class="hud-value" id="hud-round">1</span>
+          </div>
+          <div class="hud-stat">
+            <span class="hud-label">Runners Alive</span>
+            <span class="hud-value" id="hud-alive">0 / 0</span>
+          </div>
+          <div class="hud-stat">
+            <span class="hud-label">Score</span>
+            <span class="hud-value" id="hud-score">0</span>
+          </div>
+        </div>
+
+        <div class="hud-center">
+          <div class="phase-row">
+            <span class="phase-tag" id="hud-phase-tag">GREY PHASE</span>
+            <span id="hud-countdown">Colors reveal in: 10</span>
+          </div>
+          <div class="timer-track">
+            <div class="timer-fill" id="hud-timer-fill"></div>
+          </div>
+        </div>
+
+        <div class="hud-right">
+          <div class="target-box" aria-live="polite">
+            <div class="target-swatch" id="hud-target-swatch" style="background: #334155;">?</div>
+            <div class="target-meta">
+              <span class="hud-label">Target Color</span>
+              <span class="target-name" id="hud-target-name">Hidden</span>
+            </div>
+          </div>
+          <div class="hud-actions">
+            <button class="icon-btn" id="btn-mute" type="button" title="Mute / Unmute (M)" aria-label="Toggle sound">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" id="icon-sound-on">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+              </svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" id="icon-sound-off" style="display:none;">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <line x1="23" y1="9" x2="17" y2="15"></line>
+                <line x1="17" y1="9" x2="23" y2="15"></line>
+              </svg>
+            </button>
+            <button class="icon-btn" id="btn-pause" type="button" title="Pause (P / Esc)" aria-label="Pause game">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1"></rect>
+                <rect x="14" y="4" width="4" height="16" rx="1"></rect>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main 1000x640 Game Canvas & Overlays -->
+      <main class="stage-wrap">
+        <canvas id="game-canvas" width="1000" height="640"></canvas>
+
+        <!-- Start / Instructions Menu -->
+        <section class="overlay" id="overlay-menu">
+          <div class="modal-card">
+            <div class="title-lockup">
+              <svg class="title-svg" viewBox="0 0 380 54" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Color Escape">
+                <rect x="2" y="8" width="14" height="14" rx="3" fill="#EF4444" />
+                <rect x="19" y="8" width="14" height="14" rx="3" fill="#3B82F6" />
+                <rect x="2" y="25" width="14" height="14" rx="3" fill="#10B981" />
+                <rect x="19" y="25" width="14" height="14" rx="3" fill="#FACC15" />
+                <text x="46" y="36" fill="#F8FAFC" font-family="system-ui, -apple-system, sans-serif" font-size="31" font-weight="900" letter-spacing="-0.8">COLOR ESCAPE</text>
+              </svg>
+              <span class="subtitle-line" style="text-align:right;">2D Survival Tag</span>
+            </div>
+
+            <div class="instructions-panel">
+              <div class="inst-block">
+                <div class="inst-heading">Goal of the Game</div>
+                <p class="inst-text">Outrun the red Chaser and reach a tile matching the Target Color before time runs out. Every survivor earns +100 points per round and stuns the Chaser for 1.5s.</p>
+              </div>
+
+              <div class="inst-block">
+                <div class="inst-heading">How Phases Work</div>
+                <p class="inst-text">Map is black and white for 10 seconds, then colors appear. Run to the block with the target color before time runs out, or the chaser catches you!</p>
+              </div>
+
+              <div class="controls-grid">
+                <div class="control-item">
+                  <span class="player-tag p1">Player 1 (Cyan)</span>
+                  <span class="control-keys">WASD to Move · Shift to Sprint</span>
+                </div>
+                <div class="control-item">
+                  <span class="player-tag p2">Player 2 (Pink)</span>
+                  <span class="control-keys">Arrow Keys to Move · Right Ctrl to Sprint</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="menu-footer">
+              <div class="seg-control" role="group" aria-label="Player mode">
+                <button class="seg-btn active" id="mode-1p" type="button">1 Player</button>
+                <button class="seg-btn" id="mode-2p" type="button">2 Players</button>
+              </div>
+
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                <button class="btn btn-primary" id="btn-start" type="button">Start Game</button>
+                <span class="start-prompt">Press SPACE or click START to play</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pause Overlay -->
+        <section class="overlay hidden" id="overlay-pause">
+          <div class="modal-card compact">
+            <h2 class="modal-title">Paused</h2>
+            <p class="subtitle-line">Take a breather. The Chaser is waiting.</p>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="btn-resume" type="button">Resume</button>
+              <button class="btn btn-secondary" id="btn-pause-restart" type="button">Restart</button>
+              <button class="btn btn-secondary" id="btn-pause-menu" type="button">Menu</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Game Over Overlay -->
+        <section class="overlay hidden" id="overlay-gameover">
+          <div class="modal-card compact">
+            <h2 class="modal-title gameover">GAME OVER</h2>
+            <p class="subtitle-line">All runners were caught by the Chaser.</p>
+            <div class="summary-stats">
+              <div class="summary-stat">
+                <span class="hud-label">Survived Rounds</span>
+                <span class="val" id="go-rounds">0</span>
+              </div>
+              <div class="summary-stat">
+                <span class="hud-label">Final Score</span>
+                <span class="val" id="go-score">0</span>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-danger" id="btn-restart" type="button">Restart (R)</button>
+              <button class="btn btn-secondary" id="btn-gameover-menu" type="button">Main Menu</button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Bottom Stamina & Shortcut Bar -->
+      <footer class="stamina-bar-row">
+        <div class="stamina-group">
+          <div class="stamina-item" id="stamina-p1-wrap">
+            <span class="player-tag p1">P1 Stamina</span>
+            <div class="stamina-track">
+              <div class="stamina-fill p1" id="stamina-p1-fill"></div>
+            </div>
+            <span class="stamina-pct" id="stamina-p1-pct">100%</span>
+          </div>
+
+          <div class="stamina-item hidden" id="stamina-p2-wrap">
+            <span class="player-tag p2">P2 Stamina</span>
+            <div class="stamina-track">
+              <div class="stamina-fill p2" id="stamina-p2-fill"></div>
+            </div>
+            <span class="stamina-pct" id="stamina-p2-pct">100%</span>
+          </div>
+        </div>
+
+        <div class="hint-line">P / Esc Pause · M Mute · R Restart</div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // Preserve native Map constructor before defining the game's Map class
+    const NativeMap = globalThis.Map;
+
+    // =========================================================================
+    // CONSTANTS & CONFIGURATION
+    // =========================================================================
+    const CANVAS_WIDTH = 1000;
+    const CANVAS_HEIGHT = 640;
+    const TILE_SIZE = 40;
+    const GRID_COLS = CANVAS_WIDTH / TILE_SIZE; // 25
+    const GRID_ROWS = CANVAS_HEIGHT / TILE_SIZE; // 16
+
+    const GREY_TIME = 10.0;        // Starting grey phase duration (seconds)
+    const MIN_GREY_TIME = 4.5;     // Minimum grey phase duration on high rounds
+    const GREY_DECAY_PER_ROUND = 0.5;
+
+    const COLOR_TIME = 5.0;        // Time runners have to reach target color
+    const FADE_TIME = 1.0;         // Smooth color reveal transition duration
+    const ROUND_END_TIME = 1.15;   // Dramatic dash & summary pause between rounds
+    const CHASER_STUN_TIME = 1.5;  // Stun duration after a successful round
+
+    const RUNNER_RADIUS = 13;
+    const CHASER_SIZE = 32;
+    const CHASER_RADIUS = 16;
+
+    const RUNNER_SPEED = 205;      // Base speed in px/sec
+    const AI_RUNNER_SPEED = 190;   // Slightly calmer base speed for AI bots
+    const SPRINT_MULTIPLIER = 1.6;
+    const STAMINA_MAX = 100;
+    const STAMINA_DRAIN = 42;      // Per second while sprinting
+    const STAMINA_REGEN = 26;      // Per second while not sprinting
+
+    const CHASER_BASE_SPEED = 172; // Slightly slower than runners at round 1
+    const CHASER_SPEED_STEP = 9;   // Speed increase per round
+    const CHASER_MAX_SPEED = 265;
+
+    const AI_RUNNER_COUNT = 4;     // 4 AI runners alongside player(s)
+    const SCORE_PER_SURVIVOR = 100;
+
+    // Game States
+    const STATES = {
+      MENU: 'MENU',
+      GREY_PHASE: 'GREY_PHASE',
+      COLOR_PHASE: 'COLOR_PHASE',
+      ROUND_END: 'ROUND_END',
+      GAME_OVER: 'GAME_OVER',
+      PAUSED: 'PAUSED'
+    };
+
+    // Tile Color Palette (color + distinct grayscale shade for grey phase pattern)
+    const COLOR_PALETTE = [
+      { id: 'red',    name: 'RED',    hex: '#ef4444', rgb: [239, 68, 68],   gray: [74, 77, 84] },
+      { id: 'blue',   name: 'BLUE',   hex: '#3b82f6', rgb: [59, 130, 246],  gray: [92, 96, 106] },
+      { id: 'green',  name: 'GREEN',  hex: '#10b981', rgb: [16, 185, 129],  gray: [110, 114, 124] },
+      { id: 'yellow', name: 'YELLOW', hex: '#facc15', rgb: [250, 204, 21],  gray: [148, 152, 162] },
+      { id: 'purple', name: 'PURPLE', hex: '#a855f7', rgb: [168, 85, 247],  gray: [82, 85, 95] },
+      { id: 'orange', name: 'ORANGE', hex: '#f97316', rgb: [249, 115, 22],  gray: [128, 132, 142] }
+    ];
+
+    const WALL_TYPE = -1;
+
+    // =========================================================================
+    // UTILITY FUNCTIONS
+    // =========================================================================
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function dist(x1, y1, x2, y2) {
+      return Math.hypot(x2 - x1, y2 - y1);
+    }
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // Circle vs Tile AABB collision resolution along a single axis
+    function resolveCircleRect(cx, cy, r, rx, ry, rw, rh) {
+      const closestX = clamp(cx, rx, rx + rw);
+      const closestY = clamp(cy, ry, ry + rh);
+      const dx = cx - closestX;
+      const dy = cy - closestY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < r * r) {
+        const d = Math.sqrt(d2) || 0.0001;
+        const overlap = r - d;
+        return {
+          hit: true,
+          nx: (dx / d) * overlap,
+          ny: (dy / d) * overlap
+        };
+      }
+      return { hit: false, nx: 0, ny: 0 };
+    }
+
+    // =========================================================================
+    // PROCEDURAL SOUND SYNTHESIZER (WEB AUDIO API)
+    // =========================================================================
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      ensureContext() {
+        if (this.muted) return null;
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+        return this.ctx;
+      }
+
+      playTone(freq, duration, type = 'sine', volume = 0.14, slideTo = null, delay = 0) {
+        const ctx = this.ensureContext();
+        if (!ctx || this.muted) return;
+
+        const start = ctx.currentTime + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, start);
+        if (slideTo !== null) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), start + duration);
+        }
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(volume, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + duration + 0.02);
+      }
+
+      playTick(urgent = false) {
+        this.playTone(urgent ? 760 : 520, 0.08, 'triangle', 0.09);
+      }
+
+      playReveal() {
+        // Bright ascending alert chord when colors appear
+        this.playTone(440, 0.18, 'triangle', 0.13, 660, 0);
+        this.playTone(659.25, 0.22, 'sine', 0.12, null, 0.05);
+        this.playTone(880, 0.28, 'sine', 0.12, null, 0.1);
+      }
+
+      playCatch() {
+        // Punchy low thud + descending buzz
+        this.playTone(210, 0.24, 'sawtooth', 0.16, 65, 0);
+        this.playTone(120, 0.28, 'square', 0.1, 42, 0.02);
+      }
+
+      playSuccess() {
+        // Crisp 3-note victory chime
+        this.playTone(523.25, 0.14, 'triangle', 0.13, null, 0);
+        this.playTone(659.25, 0.14, 'triangle', 0.13, null, 0.08);
+        this.playTone(783.99, 0.24, 'sine', 0.15, null, 0.16);
+      }
+
+      playGameOver() {
+        this.playTone(340, 0.22, 'sawtooth', 0.13, 240, 0);
+        this.playTone(240, 0.24, 'sawtooth', 0.13, 160, 0.18);
+        this.playTone(150, 0.42, 'triangle', 0.15, 75, 0.36);
+      }
+    }
+
+    // =========================================================================
+    // INPUT CLASS: Handles keyboard state, blur clearing, and scroll prevention
+    // =========================================================================
+    class Input {
+      constructor() {
+        this.held = new Set();
+        this.justPressed = new Set();
+
+        const blockedCodes = new Set([
+          'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'
+        ]);
+
+        window.addEventListener('keydown', (e) => {
+          if (blockedCodes.has(e.code)) {
+            e.preventDefault();
+          }
+          if (!this.held.has(e.code)) {
+            this.justPressed.add(e.code);
+          }
+          this.held.add(e.code);
+        }, { passive: false });
+
+        window.addEventListener('keyup', (e) => {
+          this.held.delete(e.code);
+        });
+
+        // Clear all held keys if the browser tab or iframe loses focus
+        window.addEventListener('blur', () => this.clear());
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) this.clear();
+        });
+      }
+
+      clear() {
+        this.held.clear();
+        this.justPressed.clear();
+      }
+
+      isHeld(code) {
+        return this.held.has(code);
+      }
+
+      consumeJustPressed(code) {
+        if (this.justPressed.has(code)) {
+          this.justPressed.delete(code);
+          return true;
+        }
+        return false;
+      }
+
+      endFrame() {
+        this.justPressed.clear();
+      }
+    }
+
+    // =========================================================================
+    // MAP CLASS: Grid generation (3x3 - 4x4 color blocks, walls, BFS pathing)
+    // =========================================================================
+    class Map {
+      constructor() {
+        this.cols = GRID_COLS;
+        this.rows = GRID_ROWS;
+        this.tiles = [];
+        this.targetColorIndex = 0;
+        this.fadeProgress = 0; // 0 = grayscale, 1 = full color
+        this.generate();
+      }
+
+      generate() {
+        // Initialize grid
+        this.tiles = Array.from({ length: this.rows }, () => new Array(this.cols).fill(0));
+
+        // Fill map with overlapping 3x3 to 4x4 colored block zones
+        for (let r = 0; r < this.rows; r += 3) {
+          for (let c = 0; c < this.cols; c += 3) {
+            const bw = randInt(3, 4);
+            const bh = randInt(3, 4);
+            const colorIdx = randInt(0, COLOR_PALETTE.length - 1);
+            this.paintBlock(c, r, bw, bh, colorIdx);
+          }
+        }
+
+        // Sprinkle a few extra random 3x3 / 4x4 zones for organic variety
+        for (let i = 0; i < 14; i++) {
+          const bw = randInt(3, 4);
+          const bh = randInt(3, 4);
+          const c = randInt(0, this.cols - bw);
+          const r = randInt(0, this.rows - bh);
+          const colorIdx = randInt(0, COLOR_PALETTE.length - 1);
+          this.paintBlock(c, r, bw, bh, colorIdx);
+        }
+
+        // Pick a target color for this round
+        this.targetColorIndex = randInt(0, COLOR_PALETTE.length - 1);
+
+        // Place symmetric/balanced obstacle wall pillars that leave wide corridors
+        this.placeWalls();
+
+        // Guarantee at least 3 distinct 3x3-4x4 zones of the target color exist
+        this.ensureTargetZones(3);
+
+        // Ensure all playable floor tiles are connected (no trapped pockets)
+        this.ensureConnectivity();
+
+        this.fadeProgress = 0;
+      }
+
+      paintBlock(startCol, startRow, w, h, colorIdx) {
+        for (let r = startRow; r < Math.min(this.rows, startRow + h); r++) {
+          for (let c = startCol; c < Math.min(this.cols, startCol + w); c++) {
+            this.tiles[r][c] = colorIdx;
+          }
+        }
+      }
+
+      placeWalls() {
+        // Scatter small 1x2, 2x1, or 2x2 wall blocks away from outer corners/center spawn
+        const wallCandidates = 18;
+        for (let i = 0; i < wallCandidates; i++) {
+          const c = randInt(2, this.cols - 4);
+          const r = randInt(2, this.rows - 4);
+          // Keep central chaser spawn zone (around col 12, row 7-8) open
+          if (Math.abs(c - 12) <= 2 && Math.abs(r - 7) <= 2) continue;
+
+          const shape = randInt(0, 2);
+          if (shape === 0) {
+            this.tiles[r][c] = WALL_TYPE;
+            this.tiles[r][c + 1] = WALL_TYPE;
+          } else if (shape === 1) {
+            this.tiles[r][c] = WALL_TYPE;
+            this.tiles[r + 1][c] = WALL_TYPE;
+          } else {
+            this.tiles[r][c] = WALL_TYPE;
+          }
+        }
+      }
+
+      ensureTargetZones(minZones) {
+        // Stamp guaranteed 3x3 zones in spread-out quadrants so target color always has >= 3 zones
+        const anchorSpots = [
+          [randInt(1, 5), randInt(1, 4)],
+          [randInt(17, 21), randInt(1, 4)],
+          [randInt(1, 5), randInt(10, 12)],
+          [randInt(17, 21), randInt(10, 12)],
+          [randInt(9, 13), randInt(2, 5)]
+        ];
+        // Shuffle anchor spots
+        for (let i = anchorSpots.length - 1; i > 0; i--) {
+          const j = randInt(0, i);
+          [anchorSpots[i], anchorSpots[j]] = [anchorSpots[j], anchorSpots[i]];
+        }
+
+        for (let z = 0; z < minZones; z++) {
+          const [sc, sr] = anchorSpots[z];
+          const bw = randInt(3, 4);
+          const bh = randInt(3, 4);
+          for (let r = sr; r < Math.min(this.rows, sr + bh); r++) {
+            for (let c = sc; c < Math.min(this.cols, sc + bw); c++) {
+              if (this.tiles[r][c] !== WALL_TYPE) {
+                this.tiles[r][c] = this.targetColorIndex;
+              }
+            }
+          }
+        }
+      }
+
+      ensureConnectivity() {
+        // Flood-fill from center; convert any unreachable floor tiles or blocking walls cleanly
+        const startR = 7;
+        const startC = 12;
+        this.tiles[startR][startC] = randInt(0, COLOR_PALETTE.length - 1);
+
+        const visited = Array.from({ length: this.rows }, () => new Array(this.cols).fill(false));
+        const queue = [[startR, startC]];
+        visited[startR][startC] = true;
+
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        while (queue.length > 0) {
+          const [r, c] = queue.shift();
+          for (const [dr, dc] of dirs) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols) {
+              if (!visited[nr][nc] && this.tiles[nr][nc] !== WALL_TYPE) {
+                visited[nr][nc] = true;
+                queue.push([nr, nc]);
+              }
+            }
+          }
+        }
+
+        // Open any disconnected pockets by clearing adjacent walls if needed
+        for (let r = 0; r < this.rows; r++) {
+          for (let c = 0; c < this.cols; c++) {
+            if (this.tiles[r][c] !== WALL_TYPE && !visited[r][c]) {
+              // Carve a short corridor toward center
+              let cr = r;
+              let cc = c;
+              while (cr !== startR || cc !== startC) {
+                if (this.tiles[cr][cc] === WALL_TYPE) {
+                  this.tiles[cr][cc] = randInt(0, COLOR_PALETTE.length - 1);
+                }
+                if (cr < startR) cr++;
+                else if (cr > startR) cr--;
+                else if (cc < startC) cc++;
+                else if (cc > startC) cc--;
+              }
+            }
+          }
+        }
+      }
+
+      isWall(col, row) {
+        if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return true;
+        return this.tiles[row][col] === WALL_TYPE;
+      }
+
+      getTileAtPixel(x, y) {
+        const c = clamp(Math.floor(x / TILE_SIZE), 0, this.cols - 1);
+        const r = clamp(Math.floor(y / TILE_SIZE), 0, this.rows - 1);
+        return this.tiles[r][c];
+      }
+
+      isOnTargetColor(x, y) {
+        return this.getTileAtPixel(x, y) === this.targetColorIndex;
+      }
+
+      // Returns an open pixel coordinate far enough from avoidPoints
+      getRandomOpenPosition(avoidPoints = [], minDistance = 120) {
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const c = randInt(1, this.cols - 2);
+          const r = randInt(1, this.rows - 2);
+          if (this.tiles[r][c] === WALL_TYPE) continue;
+
+          const px = c * TILE_SIZE + TILE_SIZE / 2;
+          const py = r * TILE_SIZE + TILE_SIZE / 2;
+
+          let ok = true;
+          for (const pt of avoidPoints) {
+            if (dist(px, py, pt.x, pt.y) < minDistance) {
+              ok = false;
+              break;
+            }
+          }
+          if (ok) return { x: px, y: py };
+        }
+        // Fallback guaranteed open center-ish tile
+        return { x: 12 * TILE_SIZE + 20, y: 7 * TILE_SIZE + 20 };
+      }
+
+      // Resolve circle collision against nearby wall tiles per axis so characters slide smoothly
+      moveWithWallCollision(entity, dx, dy) {
+        const r = entity.radius;
+
+        // Move X axis
+        entity.x = clamp(entity.x + dx, r, CANVAS_WIDTH - r);
+        this.resolveWallAxis(entity, 'x');
+
+        // Move Y axis
+        entity.y = clamp(entity.y + dy, r, CANVAS_HEIGHT - r);
+        this.resolveWallAxis(entity, 'y');
+      }
+
+      resolveWallAxis(entity, axis) {
+        const minCol = Math.max(0, Math.floor((entity.x - entity.radius) / TILE_SIZE) - 1);
+        const maxCol = Math.min(this.cols - 1, Math.floor((entity.x + entity.radius) / TILE_SIZE) + 1);
+        const minRow = Math.max(0, Math.floor((entity.y - entity.radius) / TILE_SIZE) - 1);
+        const maxRow = Math.min(this.rows - 1, Math.floor((entity.y + entity.radius) / TILE_SIZE) + 1);
+
+        for (let row = minRow; row <= maxRow; row++) {
+          for (let col = minCol; col <= maxCol; col++) {
+            if (this.tiles[row][col] !== WALL_TYPE) continue;
+            const res = resolveCircleRect(
+              entity.x,
+              entity.y,
+              entity.radius,
+              col * TILE_SIZE,
+              row * TILE_SIZE,
+              TILE_SIZE,
+              TILE_SIZE
+            );
+            if (res.hit) {
+              if (axis === 'x') entity.x += res.nx;
+              else entity.y += res.ny;
+            }
+          }
+        }
+      }
+
+      // BFS next step from (startX, startY) to nearest tile matching predicate or target point
+      findNextStepBFS(startX, startY, targetX, targetY, findTargetColor = false) {
+        const startC = clamp(Math.floor(startX / TILE_SIZE), 0, this.cols - 1);
+        const startR = clamp(Math.floor(startY / TILE_SIZE), 0, this.rows - 1);
+        const goalC = clamp(Math.floor(targetX / TILE_SIZE), 0, this.cols - 1);
+        const goalR = clamp(Math.floor(targetY / TILE_SIZE), 0, this.rows - 1);
+
+        if (!findTargetColor && startC === goalC && startR === goalR) {
+          return { x: targetX, y: targetY };
+        }
+        if (findTargetColor && this.tiles[startR][startC] === this.targetColorIndex) {
+          return {
+            x: startC * TILE_SIZE + TILE_SIZE / 2,
+            y: startR * TILE_SIZE + TILE_SIZE / 2
+          };
+        }
+
+        const visited = Array.from({ length: this.rows }, () => new Array(this.cols).fill(false));
+        const parent = Array.from({ length: this.rows }, () => new Array(this.cols).fill(null));
+        const queue = [[startR, startC]];
+        visited[startR][startC] = true;
+
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        let found = null;
+
+        while (queue.length > 0) {
+          const [r, c] = queue.shift();
+          if (findTargetColor) {
+            if (this.tiles[r][c] === this.targetColorIndex) {
+              found = [r, c];
+              break;
+            }
+          } else if (r === goalR && c === goalC) {
+            found = [r, c];
+            break;
+          }
+
+          for (const [dr, dc] of dirs) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols) {
+              if (!visited[nr][nc] && this.tiles[nr][nc] !== WALL_TYPE) {
+                visited[nr][nc] = true;
+                parent[nr][nc] = [r, c];
+                queue.push([nr, nc]);
+              }
+            }
+          }
+        }
+
+        if (!found) return null;
+
+        // Backtrack to the immediate next step from start
+        let cur = found;
+        while (parent[cur[0]][cur[1]]) {
+          const p = parent[cur[0]][cur[1]];
+          if (p[0] === startR && p[1] === startC) {
+            return {
+              x: cur[1] * TILE_SIZE + TILE_SIZE / 2,
+              y: cur[0] * TILE_SIZE + TILE_SIZE / 2
+            };
+          }
+          cur = p;
+        }
+        return {
+          x: found[1] * TILE_SIZE + TILE_SIZE / 2,
+          y: found[0] * TILE_SIZE + TILE_SIZE / 2
+        };
+      }
+
+      draw(ctx, time, highlightTarget) {
+        const t = clamp(this.fadeProgress, 0, 1);
+
+        for (let r = 0; r < this.rows; r++) {
+          for (let c = 0; c < this.cols; c++) {
+            const tile = this.tiles[r][c];
+            const x = c * TILE_SIZE;
+            const y = r * TILE_SIZE;
+
+            if (tile === WALL_TYPE) {
+              // Solid dark gray wall obstacle with crisp bevel
+              ctx.fillStyle = '#181c24';
+              ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+              ctx.fillStyle = '#252b37';
+              ctx.fillRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+              ctx.strokeStyle = '#0b0e14';
+              ctx.lineWidth = 1.5;
+              ctx.strokeRect(x + 0.75, y + 0.75, TILE_SIZE - 1.5, TILE_SIZE - 1.5);
+              continue;
+            }
+
+            const pColor = COLOR_PALETTE[tile];
+            // Interpolate smoothly from grayscale pattern to vivid color
+            const red = Math.round(lerp(pColor.gray[0], pColor.rgb[0], t));
+            const grn = Math.round(lerp(pColor.gray[1], pColor.rgb[1], t));
+            const blu = Math.round(lerp(pColor.gray[2], pColor.rgb[2], t));
+
+            ctx.fillStyle = `rgb(${red}, ${grn}, ${blu})`;
+            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+            // Subtle tile grid seam
+            ctx.strokeStyle = `rgba(11, 14, 20, ${lerp(0.32, 0.22, t)})`;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+
+            // Subtle inner highlight on target color tiles once revealed
+            if (highlightTarget && t > 0.25 && tile === this.targetColorIndex) {
+              const pulse = 0.4 + 0.35 * Math.sin(time * 7);
+              ctx.strokeStyle = `rgba(255, 255, 255, ${pulse * t})`;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+            }
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // RUNNER CLASS: Human (P1 / P2) and AI Runners with Sprint & Wall Sliding
+    // =========================================================================
+    class Runner {
+      constructor({ id, label, color, isPlayer, playerIndex, x, y }) {
+        this.id = id;
+        this.label = label;
+        this.color = color;
+        this.isPlayer = isPlayer;
+        this.playerIndex = playerIndex; // 1, 2, or 0 for AI
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.radius = RUNNER_RADIUS;
+        this.alive = true;
+        this.safe = false;
+
+        this.stamina = STAMINA_MAX;
+        this.sprinting = false;
+        this.lookAngle = 0;
+        this.squash = 1;
+
+        // AI wander state
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        this.wanderTimer = 0;
+        this.trailTimer = 0;
+      }
+
+      update(dt, map, input, chaser, phase, isTwoPlayer, game) {
+        if (!this.alive) return;
+
+        let moveX = 0;
+        let moveY = 0;
+        let wantsSprint = false;
+
+        if (this.isPlayer) {
+          if (this.playerIndex === 1) {
+            if (input.isHeld('KeyW')) moveY -= 1;
+            if (input.isHeld('KeyS')) moveY += 1;
+            if (input.isHeld('KeyA')) moveX -= 1;
+            if (input.isHeld('KeyD')) moveX += 1;
+            // In 1-player mode, also allow Arrow keys as convenient fallback
+            if (!isTwoPlayer) {
+              if (input.isHeld('ArrowUp')) moveY -= 1;
+              if (input.isHeld('ArrowDown')) moveY += 1;
+              if (input.isHeld('ArrowLeft')) moveX -= 1;
+              if (input.isHeld('ArrowRight')) moveX += 1;
+            }
+            wantsSprint = input.isHeld('ShiftLeft') || (!isTwoPlayer && input.isHeld('ShiftRight'));
+          } else if (this.playerIndex === 2) {
+            if (input.isHeld('ArrowUp')) moveY -= 1;
+            if (input.isHeld('ArrowDown')) moveY += 1;
+            if (input.isHeld('ArrowLeft')) moveX -= 1;
+            if (input.isHeld('ArrowRight')) moveX += 1;
+            wantsSprint = input.isHeld('ControlRight') || input.isHeld('ShiftRight');
+          }
+        } else {
+          // AI Runner Behavior
+          const aiDir = this.computeAIDirection(dt, map, chaser, phase);
+          moveX = aiDir.x;
+          moveY = aiDir.y;
+          wantsSprint = aiDir.sprint;
+        }
+
+        // Normalize diagonal movement vector
+        const mag = Math.hypot(moveX, moveY);
+        if (mag > 0.001) {
+          moveX /= mag;
+          moveY /= mag;
+          this.lookAngle = Math.atan2(moveY, moveX);
+        }
+
+        // Stamina & Sprint logic
+        const isMoving = mag > 0.001;
+        if (wantsSprint && isMoving && this.stamina > 1) {
+          this.sprinting = true;
+          this.stamina = Math.max(0, this.stamina - STAMINA_DRAIN * dt);
+        } else {
+          this.sprinting = false;
+          this.stamina = Math.min(STAMINA_MAX, this.stamina + STAMINA_REGEN * dt);
+        }
+
+        const baseSpeed = this.isPlayer ? RUNNER_SPEED : AI_RUNNER_SPEED;
+        const speed = baseSpeed * (this.sprinting ? SPRINT_MULTIPLIER : 1);
+
+        // Smooth velocity-based movement
+        const targetVx = moveX * speed;
+        const targetVy = moveY * speed;
+        const accel = 1 - Math.exp(-18 * dt);
+        this.vx = lerp(this.vx, targetVx, accel);
+        this.vy = lerp(this.vy, targetVy, accel);
+
+        // Subtle squash-and-stretch while sprinting
+        const targetSquash = this.sprinting ? 1.12 : 1.0;
+        this.squash = lerp(this.squash, targetSquash, 1 - Math.exp(-14 * dt));
+
+        map.moveWithWallCollision(this, this.vx * dt, this.vy * dt);
+
+        // Spawn subtle sprint dust particles
+        if (this.sprinting && isMoving) {
+          this.trailTimer -= dt;
+          if (this.trailTimer <= 0) {
+            this.trailTimer = 0.055;
+            game.spawnParticles(this.x, this.y, this.color, 2, 45, 0.25);
+          }
+        }
+      }
+
+      computeAIDirection(dt, map, chaser, phase) {
+        const dChaser = dist(this.x, this.y, chaser.x, chaser.y);
+        const fleeThreshold = phase === STATES.COLOR_PHASE ? 135 : 190;
+
+        if (phase === STATES.COLOR_PHASE) {
+          // Run toward the nearest tile of the target color while avoiding the chaser
+          let dirX = 0;
+          let dirY = 0;
+
+          if (!map.isOnTargetColor(this.x, this.y)) {
+            const step = map.findNextStepBFS(this.x, this.y, 0, 0, true);
+            if (step) {
+              dirX = step.x - this.x;
+              dirY = step.y - this.y;
+            }
+          } else {
+            // Already on target color: stay near tile center unless chaser gets very close
+            const tc = Math.floor(this.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2;
+            const tr = Math.floor(this.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE / 2;
+            dirX = (tc - this.x) * 0.4;
+            dirY = (tr - this.y) * 0.4;
+          }
+
+          // Blend chaser avoidance
+          if (dChaser < fleeThreshold && dChaser > 0.1) {
+            const awayX = (this.x - chaser.x) / dChaser;
+            const awayY = (this.y - chaser.y) / dChaser;
+            const weight = (1 - dChaser / fleeThreshold) * 1.4;
+            const len = Math.hypot(dirX, dirY) || 1;
+            dirX = (dirX / len) + awayX * weight;
+            dirY = (dirY / len) + awayY * weight;
+          }
+
+          return {
+            x: dirX,
+            y: dirY,
+            sprint: (!map.isOnTargetColor(this.x, this.y) && this.stamina > 15) || dChaser < 120
+          };
+        }
+
+        // GREY PHASE: wander randomly, flee if chaser approaches
+        this.wanderTimer -= dt;
+        if (this.wanderTimer <= 0) {
+          this.wanderTimer = 0.6 + Math.random() * 1.1;
+          this.wanderAngle += (Math.random() - 0.5) * 2.1;
+        }
+
+        // Bounce wander direction away from screen edges and nearby walls
+        const lookAhead = 28;
+        const probeX = this.x + Math.cos(this.wanderAngle) * lookAhead;
+        const probeY = this.y + Math.sin(this.wanderAngle) * lookAhead;
+        const probeCol = Math.floor(probeX / TILE_SIZE);
+        const probeRow = Math.floor(probeY / TILE_SIZE);
+        if (probeX < 25 || probeX > CANVAS_WIDTH - 25 || probeY < 25 || probeY > CANVAS_HEIGHT - 25 || map.isWall(probeCol, probeRow)) {
+          this.wanderAngle += Math.PI * 0.65 + (Math.random() - 0.5) * 0.5;
+        }
+
+        let wx = Math.cos(this.wanderAngle);
+        let wy = Math.sin(this.wanderAngle);
+
+        if (dChaser < fleeThreshold && dChaser > 0.1) {
+          const awayX = (this.x - chaser.x) / dChaser;
+          const awayY = (this.y - chaser.y) / dChaser;
+          const urgency = 1.8 * (1 - dChaser / fleeThreshold);
+          wx += awayX * urgency;
+          wy += awayY * urgency;
+          this.wanderAngle = Math.atan2(wy, wx);
+        }
+
+        return {
+          x: wx,
+          y: wy,
+          sprint: dChaser < 140 && this.stamina > 20
+        };
+      }
+
+      draw(ctx, map, showSafeHighlight) {
+        if (!this.alive) return;
+
+        const onTarget = showSafeHighlight && map.isOnTargetColor(this.x, this.y);
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // Soft drop shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(0, this.radius * 0.72, this.radius * 0.9, this.radius * 0.42, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Safe ring indicator when standing on target color during Color Phase
+        if (onTarget) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, this.radius + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Squash-and-stretch oriented along movement angle
+        ctx.rotate(this.lookAngle);
+        ctx.scale(this.squash, 1 / this.squash);
+        ctx.rotate(-this.lookAngle);
+
+        // Runner body circle
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = '#0b0e14';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Expressive eyes pointing in movement direction
+        const ex = Math.cos(this.lookAngle) * 3.5;
+        const ey = Math.sin(this.lookAngle) * 3.5;
+        const perpX = -Math.sin(this.lookAngle) * 4.2;
+        const perpY = Math.cos(this.lookAngle) * 4.2;
+
+        ctx.fillStyle = '#0b0e14';
+        ctx.beginPath();
+        ctx.arc(ex + perpX, ey + perpY, 2.2, 0, Math.PI * 2);
+        ctx.arc(ex - perpX, ey - perpY, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        // Name label above player-controlled runners (and subtle label for bots)
+        if (this.isPlayer) {
+          ctx.save();
+          ctx.font = '800 11px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          const tagY = this.y - this.radius - 7;
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = 'rgba(11, 14, 20, 0.9)';
+          ctx.strokeText(this.label, this.x, tagY);
+          ctx.fillStyle = this.color;
+          ctx.fillText(this.label, this.x, tagY);
+          ctx.restore();
+        }
+      }
+    }
+
+    // =========================================================================
+    // CHASER CLASS: AI Hunter with Angry Eyes, Wall Sliding, Stun & Dash
+    // =========================================================================
+    class Chaser {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.radius = CHASER_RADIUS;
+        this.size = CHASER_SIZE;
+        this.speed = CHASER_BASE_SPEED;
+        this.stunTimer = 0;
+        this.lookAngle = 0;
+        this.pulseTime = 0;
+
+        // Elimination dash state (when round timer expires on non-safe runners)
+        this.dashing = false;
+        this.dashTrail = [];
+      }
+
+      resetForRound(x, y, round) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.dashing = false;
+        this.dashTrail = [];
+        this.speed = Math.min(CHASER_MAX_SPEED, CHASER_BASE_SPEED + (round - 1) * CHASER_SPEED_STEP);
+      }
+
+      update(dt, map, runners) {
+        this.pulseTime += dt;
+
+        if (this.stunTimer > 0) {
+          this.stunTimer = Math.max(0, this.stunTimer - dt);
+          this.vx = 0;
+          this.vy = 0;
+          return;
+        }
+
+        // Find nearest alive runner
+        let nearest = null;
+        let minDist = Infinity;
+        for (const r of runners) {
+          if (!r.alive) continue;
+          const d = dist(this.x, this.y, r.x, r.y);
+          if (d < minDist) {
+            minDist = d;
+            nearest = r;
+          }
+        }
+
+        if (!nearest) return;
+
+        // Use BFS pathfinding step so the chaser cleanly navigates around wall obstacles
+        let targetPt = { x: nearest.x, y: nearest.y };
+        if (minDist > TILE_SIZE * 1.4) {
+          const step = map.findNextStepBFS(this.x, this.y, nearest.x, nearest.y, false);
+          if (step) {
+            targetPt = step;
+          }
+        }
+
+        const dx = targetPt.x - this.x;
+        const dy = targetPt.y - this.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const dirX = dx / d;
+        const dirY = dy / d;
+
+        this.lookAngle = Math.atan2(nearest.y - this.y, nearest.x - this.x);
+
+        const accel = 1 - Math.exp(-12 * dt);
+        this.vx = lerp(this.vx, dirX * this.speed, accel);
+        this.vy = lerp(this.vy, dirY * this.speed, accel);
+
+        map.moveWithWallCollision(this, this.vx * dt, this.vy * dt);
+      }
+
+      draw(ctx) {
+        // Draw dash slash trail if executing round-end catches
+        if (this.dashTrail.length > 1) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.85)';
+          ctx.lineWidth = 10;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          ctx.moveTo(this.dashTrail[0].x, this.dashTrail[0].y);
+          for (let i = 1; i < this.dashTrail.length; i++) {
+            ctx.lineTo(this.dashTrail[i].x, this.dashTrail[i].y);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        const stunned = this.stunTimer > 0;
+
+        // Threat aura pulse (suppressed when stunned)
+        if (!stunned) {
+          const auraR = this.radius + 7 + Math.sin(this.pulseTime * 8) * 3;
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.38)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, auraR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Drop shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(0, this.size * 0.48, this.size * 0.52, this.size * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Big red rounded-square body
+        const half = this.size / 2;
+        ctx.fillStyle = stunned ? '#991b1b' : '#dc2626';
+        ctx.strokeStyle = '#0b0e14';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-half, -half, this.size, this.size, 8);
+        } else {
+          ctx.rect(-half, -half, this.size, this.size);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // Inner highlight border
+        ctx.strokeStyle = stunned ? 'rgba(255,255,255,0.12)' : 'rgba(254, 202, 202, 0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-half + 4, -half + 4, this.size - 8, this.size - 8);
+
+        if (stunned) {
+          // Dazed X eyes + orbiting stun stars
+          ctx.strokeStyle = '#fef08a';
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(-8, -4); ctx.lineTo(-3, 1);
+          ctx.moveTo(-3, -4); ctx.lineTo(-8, 1);
+          ctx.moveTo(3, -4); ctx.lineTo(8, 1);
+          ctx.moveTo(8, -4); ctx.lineTo(3, 1);
+          ctx.stroke();
+
+          // Orbiting stun pips
+          for (let i = 0; i < 3; i++) {
+            const a = this.pulseTime * 7 + (i * Math.PI * 2) / 3;
+            const sx = Math.cos(a) * 18;
+            const sy = -half - 7 + Math.sin(a) * 4;
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          // Angry slanted eyes tracking lookAngle
+          const lx = Math.cos(this.lookAngle) * 2.5;
+          const ly = Math.sin(this.lookAngle) * 2.5;
+
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(-6 + lx, -2 + ly, 4.2, 0, Math.PI * 2);
+          ctx.arc(6 + lx, -2 + ly, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#0b0e14';
+          ctx.beginPath();
+          ctx.arc(-6 + lx * 1.4, -2 + ly * 1.4, 2.0, 0, Math.PI * 2);
+          ctx.arc(6 + lx * 1.4, -2 + ly * 1.4, 2.0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Furrowed angry eyebrows
+          ctx.strokeStyle = '#0b0e14';
+          ctx.lineWidth = 2.8;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(-10, -8);
+          ctx.lineTo(-2, -5);
+          ctx.moveTo(10, -8);
+          ctx.lineTo(2, -5);
+          ctx.stroke();
+
+          // Grimace mouth
+          ctx.beginPath();
+          ctx.moveTo(-6, 7);
+          ctx.lineTo(-2, 5);
+          ctx.lineTo(2, 7);
+          ctx.lineTo(6, 5);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // =========================================================================
+    // HUD CLASS: DOM Telemetry Sync + Canvas Floating Messages
+    // =========================================================================
+    class HUD {
+      constructor() {
+        this.elRound = document.getElementById('hud-round');
+        this.elAlive = document.getElementById('hud-alive');
+        this.elScore = document.getElementById('hud-score');
+        this.elPhaseTag = document.getElementById('hud-phase-tag');
+        this.elCountdown = document.getElementById('hud-countdown');
+        this.elTimerFill = document.getElementById('hud-timer-fill');
+        this.elTargetSwatch = document.getElementById('hud-target-swatch');
+        this.elTargetName = document.getElementById('hud-target-name');
+
+        this.elP1Wrap = document.getElementById('stamina-p1-wrap');
+        this.elP1Fill = document.getElementById('stamina-p1-fill');
+        this.elP1Pct = document.getElementById('stamina-p1-pct');
+
+        this.elP2Wrap = document.getElementById('stamina-p2-wrap');
+        this.elP2Fill = document.getElementById('stamina-p2-fill');
+        this.elP2Pct = document.getElementById('stamina-p2-pct');
+
+        this.elMenu = document.getElementById('overlay-menu');
+        this.elPause = document.getElementById('overlay-pause');
+        this.elGameOver = document.getElementById('overlay-gameover');
+        this.elGoRounds = document.getElementById('go-rounds');
+        this.elGoScore = document.getElementById('go-score');
+
+        this.floatingTexts = [];
+      }
+
+      addFloatingText(text, x, y, color = '#ffffff', size = 18, duration = 1.2) {
+        this.floatingTexts.push({
+          text,
+          x,
+          y,
+          color,
+          size,
+          life: duration,
+          maxLife: duration
+        });
+      }
+
+      clearFloatingTexts() {
+        this.floatingTexts = [];
+      }
+
+      update(dt) {
+        for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = this.floatingTexts[i];
+          ft.life -= dt;
+          ft.y -= 34 * dt;
+          if (ft.life <= 0) {
+            this.floatingTexts.splice(i, 1);
+          }
+        }
+      }
+
+      drawFloatingTexts(ctx) {
+        for (const ft of this.floatingTexts) {
+          const alpha = clamp(ft.life / (ft.maxLife * 0.45), 0, 1);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = `900 ${ft.size}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 4.5;
+          ctx.strokeStyle = 'rgba(11, 14, 20, 0.92)';
+          ctx.strokeText(ft.text, ft.x, ft.y);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, ft.x, ft.y);
+          ctx.restore();
+        }
+      }
+
+      syncOverlays(state, roundsSurvived, score) {
+        this.elMenu.classList.toggle('hidden', state !== STATES.MENU);
+        this.elPause.classList.toggle('hidden', state !== STATES.PAUSED);
+        this.elGameOver.classList.toggle('hidden', state !== STATES.GAME_OVER);
+
+        if (state === STATES.GAME_OVER) {
+          this.elGoRounds.textContent = String(roundsSurvived);
+          this.elGoScore.textContent = String(score);
+        }
+      }
+
+      syncTelemetry(game) {
+        this.elRound.textContent = String(game.round);
+        const aliveCount = game.runners.filter(r => r.alive).length;
+        this.elAlive.textContent = `${aliveCount} / ${game.runners.length}`;
+        this.elScore.textContent = String(game.score);
+
+        // Phase & Countdown
+        const activePhase = game.state === STATES.PAUSED ? game.pausedFromState : game.state;
+        this.elPhaseTag.classList.remove('phase-color', 'phase-end');
+
+        if (activePhase === STATES.GREY_PHASE) {
+          this.elPhaseTag.textContent = 'GREY PHASE';
+          const secs = Math.max(0, Math.ceil(game.phaseTimer));
+          this.elCountdown.textContent = `Colors reveal in: ${secs}`;
+          const ratio = clamp(game.phaseTimer / game.currentGreyDuration, 0, 1);
+          this.elTimerFill.style.width = `${ratio * 100}%`;
+          this.elTimerFill.style.backgroundColor = secs <= 3 ? '#facc15' : '#e2e8f0';
+        } else if (activePhase === STATES.COLOR_PHASE) {
+          this.elPhaseTag.textContent = 'COLOR PHASE';
+          this.elPhaseTag.classList.add('phase-color');
+          const pColor = COLOR_PALETTE[game.map.targetColorIndex];
+          this.elCountdown.textContent = `Reach ${pColor.name} in: ${Math.max(0, game.phaseTimer).toFixed(1)}s`;
+          const ratio = clamp(game.phaseTimer / COLOR_TIME, 0, 1);
+          this.elTimerFill.style.width = `${ratio * 100}%`;
+          this.elTimerFill.style.backgroundColor = game.phaseTimer <= 2 ? '#ef4444' : pColor.hex;
+        } else if (activePhase === STATES.ROUND_END) {
+          this.elPhaseTag.textContent = 'ROUND CLEAR';
+          this.elPhaseTag.classList.add('phase-end');
+          this.elCountdown.textContent = 'Next round starting...';
+          this.elTimerFill.style.width = '100%';
+          this.elTimerFill.style.backgroundColor = '#10b981';
+        } else {
+          this.elPhaseTag.textContent = 'READY';
+          this.elCountdown.textContent = 'Colors reveal in: 10';
+          this.elTimerFill.style.width = '100%';
+          this.elTimerFill.style.backgroundColor = '#e2e8f0';
+        }
+
+        // Target Color Swatch
+        if (activePhase === STATES.COLOR_PHASE || activePhase === STATES.ROUND_END) {
+          const pColor = COLOR_PALETTE[game.map.targetColorIndex];
+          this.elTargetSwatch.style.background = pColor.hex;
+          this.elTargetSwatch.textContent = '';
+          this.elTargetName.textContent = pColor.name;
+          this.elTargetName.style.color = pColor.hex;
+        } else {
+          this.elTargetSwatch.style.background = '#334155';
+          this.elTargetSwatch.textContent = '?';
+          this.elTargetName.textContent = 'Hidden';
+          this.elTargetName.style.color = '#94a3b8';
+        }
+
+        // Player Stamina Bars
+        const p1 = game.runners.find(r => r.isPlayer && r.playerIndex === 1);
+        const p2 = game.runners.find(r => r.isPlayer && r.playerIndex === 2);
+
+        if (p1) {
+          this.elP1Wrap.classList.remove('hidden');
+          const pct1 = p1.alive ? Math.round(p1.stamina) : 0;
+          this.elP1Fill.style.width = `${pct1}%`;
+          this.elP1Pct.textContent = p1.alive ? `${pct1}%` : 'OUT';
+        }
+
+        if (game.isTwoPlayer && p2) {
+          this.elP2Wrap.classList.remove('hidden');
+          const pct2 = p2.alive ? Math.round(p2.stamina) : 0;
+          this.elP2Fill.style.width = `${pct2}%`;
+          this.elP2Pct.textContent = p2.alive ? `${pct2}%` : 'OUT';
+        } else {
+          this.elP2Wrap.classList.add('hidden');
+        }
+      }
+    }
+
+    // =========================================================================
+    // GAME CLASS: Core State Machine, Loop, Particles, Shake & Difficulty
+    // =========================================================================
+    class Game {
+      constructor() {
+        this.canvas = document.getElementById('game-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.input = new Input();
+        this.sound = new SoundFX();
+        this.hud = new HUD();
+        this.map = new Map();
+
+        this.state = STATES.MENU;
+        this.pausedFromState = STATES.GREY_PHASE;
+        this.isTwoPlayer = false;
+
+        this.round = 1;
+        this.roundsSurvived = 0;
+        this.score = 0;
+        this.currentGreyDuration = GREY_TIME;
+        this.phaseTimer = GREY_TIME;
+        this.lastTickSecond = -1;
+        this.totalTime = 0;
+
+        this.runners = [];
+        this.chaser = new Chaser(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        this.particles = [];
+        this.shakeTimer = 0;
+        this.shakeIntensity = 0;
+        this.hitstopTimer = 0;
+
+        this.setupMenuPreviewEntities();
+        this.bindUI();
+
+        this.lastTimestamp = performance.now();
+        requestAnimationFrame((ts) => this.loop(ts));
+      }
+
+      bindUI() {
+        const mode1p = document.getElementById('mode-1p');
+        const mode2p = document.getElementById('mode-2p');
+        const btnStart = document.getElementById('btn-start');
+        const btnPause = document.getElementById('btn-pause');
+        const btnMute = document.getElementById('btn-mute');
+        const btnResume = document.getElementById('btn-resume');
+        const btnPauseRestart = document.getElementById('btn-pause-restart');
+        const btnPauseMenu = document.getElementById('btn-pause-menu');
+        const btnRestart = document.getElementById('btn-restart');
+        const btnGameOverMenu = document.getElementById('btn-gameover-menu');
+
+        mode1p.addEventListener('click', () => {
+          this.isTwoPlayer = false;
+          mode1p.classList.add('active');
+          mode2p.classList.remove('active');
+        });
+
+        mode2p.addEventListener('click', () => {
+          this.isTwoPlayer = true;
+          mode2p.classList.add('active');
+          mode1p.classList.remove('active');
+        });
+
+        btnStart.addEventListener('click', () => this.startGame());
+        btnPause.addEventListener('click', () => this.togglePause());
+        btnMute.addEventListener('click', () => this.toggleMute());
+        btnResume.addEventListener('click', () => this.togglePause());
+        btnPauseRestart.addEventListener('click', () => this.startGame());
+        btnPauseMenu.addEventListener('click', () => this.returnToMenu());
+        btnRestart.addEventListener('click', () => this.startGame());
+        btnGameOverMenu.addEventListener('click', () => this.returnToMenu());
+      }
+
+      setupMenuPreviewEntities() {
+        this.map.generate();
+        this.map.fadeProgress = 0.35;
+        this.runners = [];
+        const chaserPos = { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 };
+        this.chaser = new Chaser(chaserPos.x, chaserPos.y);
+        for (let i = 0; i < 4; i++) {
+          const p = this.map.getRandomOpenPosition([chaserPos], 160);
+          this.runners.push(new Runner({
+            id: `preview-${i}`,
+            label: '',
+            color: '#e2e8f0',
+            isPlayer: false,
+            playerIndex: 0,
+            x: p.x,
+            y: p.y
+          }));
+        }
+        this.hud.syncOverlays(STATES.MENU, 0, 0);
+        this.hud.syncTelemetry(this);
+      }
+
+      toggleMute() {
+        this.sound.muted = !this.sound.muted;
+        document.getElementById('icon-sound-on').style.display = this.sound.muted ? 'none' : 'block';
+        document.getElementById('icon-sound-off').style.display = this.sound.muted ? 'block' : 'none';
+      }
+
+      togglePause() {
+        if (this.state === STATES.GREY_PHASE || this.state === STATES.COLOR_PHASE || this.state === STATES.ROUND_END) {
+          this.pausedFromState = this.state;
+          this.state = STATES.PAUSED;
+          this.hud.syncOverlays(this.state, this.roundsSurvived, this.score);
+        } else if (this.state === STATES.PAUSED) {
+          this.state = this.pausedFromState;
+          this.hud.syncOverlays(this.state, this.roundsSurvived, this.score);
+        }
+      }
+
+      returnToMenu() {
+        this.state = STATES.MENU;
+        this.hud.clearFloatingTexts();
+        this.setupMenuPreviewEntities();
+      }
+
+      startGame() {
+        this.sound.ensureContext();
+        this.round = 1;
+        this.roundsSurvived = 0;
+        this.score = 0;
+        this.particles = [];
+        this.hud.clearFloatingTexts();
+
+        this.map.generate();
+        this.spawnEntities();
+        this.beginGreyPhase(false);
+      }
+
+      spawnEntities() {
+        this.runners = [];
+        const avoid = [];
+
+        // Spawn Chaser near center
+        const chaserPos = this.map.getRandomOpenPosition([], 0);
+        chaserPos.x = 12 * TILE_SIZE + TILE_SIZE / 2;
+        chaserPos.y = 7 * TILE_SIZE + TILE_SIZE / 2;
+        if (this.map.isWall(12, 7)) {
+          this.map.tiles[7][12] = 0;
+        }
+        this.chaser = new Chaser(chaserPos.x, chaserPos.y);
+        avoid.push(chaserPos);
+
+        // Player 1 (Cyan)
+        const p1Pos = this.map.getRandomOpenPosition(avoid, 240);
+        avoid.push(p1Pos);
+        this.runners.push(new Runner({
+          id: 'p1',
+          label: 'P1',
+          color: '#22d3ee',
+          isPlayer: true,
+          playerIndex: 1,
+          x: p1Pos.x,
+          y: p1Pos.y
+        }));
+
+        // Player 2 (Pink) if 2-Player mode selected
+        if (this.isTwoPlayer) {
+          const p2Pos = this.map.getRandomOpenPosition(avoid, 220);
+          avoid.push(p2Pos);
+          this.runners.push(new Runner({
+            id: 'p2',
+            label: 'P2',
+            color: '#f472b6',
+            isPlayer: true,
+            playerIndex: 2,
+            x: p2Pos.x,
+            y: p2Pos.y
+          }));
+        }
+
+        // 3 to 4 AI Runners (white / silver-gray circles)
+        const botColors = ['#f8fafc', '#cbd5e1', '#e2e8f0', '#94a3b8'];
+        for (let i = 0; i < AI_RUNNER_COUNT; i++) {
+          const bPos = this.map.getRandomOpenPosition(avoid, 180);
+          avoid.push(bPos);
+          this.runners.push(new Runner({
+            id: `bot-${i}`,
+            label: `BOT ${i + 1}`,
+            color: botColors[i % botColors.length],
+            isPlayer: false,
+            playerIndex: 0,
+            x: bPos.x,
+            y: bPos.y
+          }));
+        }
+      }
+
+      beginGreyPhase(reshuffleMap) {
+        if (reshuffleMap) {
+          this.map.generate();
+          // Ensure chaser and alive runners aren't standing inside newly generated walls
+          if (this.map.isWall(Math.floor(this.chaser.x / TILE_SIZE), Math.floor(this.chaser.y / TILE_SIZE))) {
+            const safePt = this.map.getRandomOpenPosition([], 0);
+            this.chaser.x = safePt.x;
+            this.chaser.y = safePt.y;
+          }
+          this.map.moveWithWallCollision(this.chaser, 0, 0);
+          for (const r of this.runners) {
+            if (!r.alive) continue;
+            const c = Math.floor(r.x / TILE_SIZE);
+            const row = Math.floor(r.y / TILE_SIZE);
+            if (this.map.isWall(c, row) || dist(r.x, r.y, this.chaser.x, this.chaser.y) < 130) {
+              const pt = this.map.getRandomOpenPosition([this.chaser], 180);
+              r.x = pt.x;
+              r.y = pt.y;
+            }
+            this.map.moveWithWallCollision(r, 0, 0);
+          }
+        }
+
+        this.map.fadeProgress = 0;
+        this.currentGreyDuration = Math.max(MIN_GREY_TIME, GREY_TIME - (this.round - 1) * GREY_DECAY_PER_ROUND);
+        this.phaseTimer = this.currentGreyDuration;
+        this.lastTickSecond = Math.ceil(this.phaseTimer);
+
+        this.chaser.resetForRound(this.chaser.x, this.chaser.y, this.round);
+        this.state = STATES.GREY_PHASE;
+
+        if (this.chaser.stunTimer > 0) {
+          this.hud.addFloatingText('CHASER STUNNED!', this.chaser.x, this.chaser.y - 30, '#facc15', 18, 1.3);
+        } else {
+          this.hud.addFloatingText(`ROUND ${this.round}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40, '#f8fafc', 26, 1.2);
+        }
+
+        this.hud.syncOverlays(this.state, this.roundsSurvived, this.score);
+      }
+
+      beginColorPhase() {
+        this.state = STATES.COLOR_PHASE;
+        this.phaseTimer = COLOR_TIME;
+        this.lastTickSecond = Math.ceil(this.phaseTimer);
+        this.sound.playReveal();
+
+        const target = COLOR_PALETTE[this.map.targetColorIndex];
+        this.hud.addFloatingText(`RUN TO ${target.name}!`, CANVAS_WIDTH / 2, 76, target.hex, 28, 1.5);
+        this.triggerShake(0.18, 4);
+      }
+
+      resolveColorPhaseEnd() {
+        const survivors = [];
+        const caughtByTimeout = [];
+
+        for (const r of this.runners) {
+          if (!r.alive) continue;
+          if (this.map.isOnTargetColor(r.x, r.y)) {
+            r.safe = true;
+            survivors.push(r);
+          } else {
+            caughtByTimeout.push(r);
+          }
+        }
+
+        // Chaser instantly dashes toward anyone not on the target color
+        if (caughtByTimeout.length > 0) {
+          this.chaser.dashing = true;
+          this.chaser.dashTrail = [{ x: this.chaser.x, y: this.chaser.y }];
+
+          for (const victim of caughtByTimeout) {
+            this.chaser.dashTrail.push({ x: victim.x, y: victim.y });
+            this.chaser.x = victim.x;
+            this.chaser.y = victim.y;
+            this.eliminateRunner(victim, false);
+          }
+          this.sound.playCatch();
+          this.triggerShake(0.32, 9);
+          this.hitstopTimer = 0.055;
+        }
+
+        // Celebrate safe survivors
+        if (survivors.length > 0) {
+          for (const s of survivors) {
+            this.hud.addFloatingText('SAFE!', s.x, s.y - 24, '#34d399', 18, 1.2);
+            this.hud.addFloatingText(`+${SCORE_PER_SURVIVOR}`, s.x, s.y - 44, '#facc15', 14, 1.1);
+            this.spawnParticles(s.x, s.y, '#34d399', 12, 110, 0.55);
+          }
+          this.score += survivors.length * SCORE_PER_SURVIVOR;
+          this.roundsSurvived += 1;
+          this.chaser.stunTimer = CHASER_STUN_TIME;
+          this.sound.playSuccess();
+
+          this.state = STATES.ROUND_END;
+          this.phaseTimer = ROUND_END_TIME;
+        } else {
+          // All runners eliminated -> Game Over
+          this.triggerGameOver();
+        }
+      }
+
+      eliminateRunner(runner, playAudio = true) {
+        if (!runner.alive) return;
+        runner.alive = false;
+        this.hud.addFloatingText('CAUGHT!', runner.x, runner.y - 20, '#ef4444', 20, 1.2);
+        this.spawnParticles(runner.x, runner.y, runner.color, 18, 170, 0.55);
+        this.spawnParticles(runner.x, runner.y, '#ef4444', 10, 140, 0.45);
+        this.triggerShake(0.24, 7);
+        this.hitstopTimer = 0.045;
+
+        if (playAudio) {
+          this.sound.playCatch();
+        }
+      }
+
+      triggerGameOver() {
+        this.state = STATES.GAME_OVER;
+        this.sound.playGameOver();
+        this.hud.syncOverlays(this.state, this.roundsSurvived, this.score);
+        this.hud.syncTelemetry(this);
+      }
+
+      spawnParticles(x, y, color, count, speed, life) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spd = speed * (0.35 + Math.random() * 0.75);
+          this.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd,
+            color,
+            size: 2.5 + Math.random() * 3.5,
+            life,
+            maxLife: life
+          });
+        }
+      }
+
+      triggerShake(duration, intensity) {
+        this.shakeTimer = Math.max(this.shakeTimer, duration);
+        this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
+      }
+
+      handleGlobalHotkeys() {
+        if (this.input.consumeJustPressed('KeyM')) {
+          this.toggleMute();
+        }
+
+        if (this.state === STATES.MENU) {
+          if (this.input.consumeJustPressed('Space')) {
+            this.startGame();
+          }
+          return;
+        }
+
+        if (this.state === STATES.GAME_OVER) {
+          if (this.input.consumeJustPressed('KeyR') || this.input.consumeJustPressed('Space')) {
+            this.startGame();
+          }
+          return;
+        }
+
+        if (this.input.consumeJustPressed('KeyP') || this.input.consumeJustPressed('Escape')) {
+          this.togglePause();
+        }
+
+        if (this.input.consumeJustPressed('KeyR')) {
+          this.startGame();
+        }
+      }
+
+      update(dt) {
+        this.totalTime += dt;
+        this.handleGlobalHotkeys();
+
+        if (this.state === STATES.MENU) {
+          // Subtle living background simulation on start menu
+          for (const r of this.runners) {
+            r.update(dt, this.map, this.input, this.chaser, STATES.GREY_PHASE, false, this);
+          }
+          this.chaser.pulseTime += dt;
+          this.input.endFrame();
+          return;
+        }
+
+        if (this.state === STATES.PAUSED || this.state === STATES.GAME_OVER) {
+          this.input.endFrame();
+          return;
+        }
+
+        // Update particles & floating text even during brief hitstop
+        this.hud.update(dt);
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.life -= dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vx *= Math.exp(-5 * dt);
+          p.vy *= Math.exp(-5 * dt);
+          if (p.life <= 0) this.particles.splice(i, 1);
+        }
+
+        if (this.shakeTimer > 0) {
+          this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+        }
+
+        if (this.hitstopTimer > 0) {
+          this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
+          this.input.endFrame();
+          return;
+        }
+
+        // Phase Timer Logic
+        this.phaseTimer -= dt;
+
+        if (this.state === STATES.GREY_PHASE) {
+          const currentSec = Math.ceil(this.phaseTimer);
+          if (currentSec !== this.lastTickSecond && currentSec > 0) {
+            this.lastTickSecond = currentSec;
+            if (currentSec <= 3) {
+              this.sound.playTick(true);
+              if (currentSec === 2) {
+                this.hud.addFloatingText('COLORS INCOMING!', CANVAS_WIDTH / 2, 76, '#facc15', 22, 1.3);
+              }
+            }
+          }
+          if (this.phaseTimer <= 0) {
+            this.beginColorPhase();
+          }
+        } else if (this.state === STATES.COLOR_PHASE) {
+          // Smooth ~1 second fade from grayscale to real colors
+          if (this.map.fadeProgress < 1) {
+            this.map.fadeProgress = Math.min(1, this.map.fadeProgress + dt / FADE_TIME);
+          }
+          const currentSec = Math.ceil(this.phaseTimer);
+          if (currentSec !== this.lastTickSecond && currentSec > 0 && currentSec <= 3) {
+            this.lastTickSecond = currentSec;
+            this.sound.playTick(true);
+          }
+          if (this.phaseTimer <= 0) {
+            this.resolveColorPhaseEnd();
+          }
+        } else if (this.state === STATES.ROUND_END) {
+          if (this.phaseTimer <= 0) {
+            this.round += 1;
+            this.beginGreyPhase(true);
+          }
+        }
+
+        // Active Entity Movement & Collisions (GREY_PHASE & COLOR_PHASE)
+        if (this.state === STATES.GREY_PHASE || this.state === STATES.COLOR_PHASE) {
+          for (const r of this.runners) {
+            r.update(dt, this.map, this.input, this.chaser, this.state, this.isTwoPlayer, this);
+          }
+
+          this.chaser.update(dt, this.map, this.runners);
+
+          // Circle vs Circle Catch Detection (when chaser is not stunned)
+          if (this.chaser.stunTimer <= 0) {
+            for (const r of this.runners) {
+              if (!r.alive) continue;
+              if (dist(this.chaser.x, this.chaser.y, r.x, r.y) < this.chaser.radius + r.radius - 2) {
+                this.eliminateRunner(r, true);
+              }
+            }
+          }
+
+          // Check if all runners have been eliminated mid-round
+          if (this.runners.every(r => !r.alive)) {
+            this.triggerGameOver();
+          }
+        }
+
+        this.hud.syncTelemetry(this);
+        this.input.endFrame();
+      }
+
+      draw() {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Decaying screen shake
+        if (this.shakeTimer > 0) {
+          const sx = (Math.random() - 0.5) * 2 * this.shakeIntensity;
+          const sy = (Math.random() - 0.5) * 2 * this.shakeIntensity;
+          ctx.translate(sx, sy);
+        }
+
+        const highlightTarget = (this.state === STATES.COLOR_PHASE || this.state === STATES.ROUND_END);
+        this.map.draw(ctx, this.totalTime, highlightTarget);
+
+        // Draw Runners
+        for (const r of this.runners) {
+          r.draw(ctx, this.map, this.state === STATES.COLOR_PHASE);
+        }
+
+        // Draw Chaser
+        this.chaser.draw(ctx);
+
+        // Draw Particles
+        for (const p of this.particles) {
+          ctx.save();
+          ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Draw Floating Combat / Status Text
+        this.hud.drawFloatingTexts(ctx);
+
+        // Subtle spectator notice if human player(s) were caught while bots are still alive
+        if ((this.state === STATES.GREY_PHASE || this.state === STATES.COLOR_PHASE) &&
+            this.runners.some(r => r.alive) &&
+            this.runners.filter(r => r.isPlayer).every(r => !r.alive)) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(11, 14, 20, 0.72)';
+          ctx.fillRect(CANVAS_WIDTH / 2 - 175, CANVAS_HEIGHT - 44, 350, 30);
+          ctx.font = '700 13px system-ui, sans-serif';
+          ctx.fillStyle = '#fca5a5';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Caught! Watching remaining AI runners...', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 29);
+          ctx.restore();
+        }
+
+        ctx.restore();
+      }
+
+      loop(timestamp) {
+        const rawDt = (timestamp - this.lastTimestamp) / 1000;
+        this.lastTimestamp = timestamp;
+        // Clamp delta time so tab switches never cause physics tunneling
+        const dt = Math.min(Math.max(rawDt, 0), 0.05);
+
+        this.update(dt);
+        this.draw();
+
+        requestAnimationFrame((ts) => this.loop(ts));
+      }
+    }
+
+    // Boot Game
+    window.addEventListener('DOMContentLoaded', () => {
+      new Game();
+    });
+  </script>
+</body>
+</html>

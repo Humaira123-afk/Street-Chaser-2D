@@ -1,0 +1,6 @@
+{
+  "name": "Color Escape",
+  "description": "A fast-paced 2D HTML5 Canvas survival arcade game where runners evade an AI chaser through alternating grayscale and color-reveal phases.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
